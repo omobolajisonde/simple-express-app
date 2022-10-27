@@ -30,6 +30,7 @@ app.use(passport.session()); // use passport session middleware cause our app us
 require("./middlewares/passport"); // making app aware of the passport middlewares
 
 app.get("/", async (req, res, next) => {
+  console.log(req.user);
   return res.status(200).send("Welcome to our app!");
 });
 
@@ -37,7 +38,10 @@ app.get(
   "/profile",
   connectEnsureLogin.ensureLoggedIn("/login"),
   async (req, res, next) => {
-    return res.status(200).send("Welcome to your profile!");
+    console.log(req.user);
+    return res
+      .status(200)
+      .send(`Welcome to your profile ${req.user.username}!`);
   }
 );
 
@@ -45,41 +49,71 @@ app.post("/signup", async (req, res, next) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) {
-      return next(
-        new Error({
-          message: "Provide username and password.",
-          statusCode: 400,
-        })
-      );
+      return next(new Error("Provide username and password."));
     }
     const user = await User.create({ username, password });
-    passport.authenticate("local", {
-      failureRedirect: "/login",
-      failureMessage: "Try logging again!",
-    })(req, res, next);
-    // return res.status(201).json({
-    //   success: true,
-    //   user,
-    // })
+    passport.authenticate(
+      "local",
+      {
+        failureRedirect: "/login",
+        failureMessage: "Try logging again!",
+      },
+      (err, user, info) => {
+        if (err) return next(err);
+        if (!user) {
+          return next(new Error(info.message));
+        }
+        req.logIn(user, (err) => {
+          if (err) return next(err);
+          res.redirect(302, "/profile");
+        });
+      }
+    )(req, res, next);
   } catch (error) {
     return next(error);
   }
 });
 
-app.post(
-  "/login",
-  passport.authenticate("local", {
-    failureRedirect: "/login",
-    failureMessage: "Try logging again!",
-  }),
-  (req, res, next) => {
-    console.log(req.user);
-    res.redirect(302, "/profile");
+app.get("/login", passport.authenticate("facebook"));
+app.get(
+  "/auth/facebook/callback",
+  passport.authenticate("facebook", { failureRedirect: "/login" }),
+  function (req, res) {
+    // Successful authentication, redirect home.
+    res.redirect("/profile");
   }
 );
-
-app.use((err, req, res, next) => {
-  return res.json({ err });
+app.post("/login", (req, res, next) => {
+  passport.authenticate(
+    "local",
+    {
+      failureRedirect: "/login",
+      failureMessage: "Try logging again!",
+    },
+    (err, user, info) => {
+      if (err) return next(err);
+      if (!user) {
+        return next(new Error(info.message));
+      }
+      req.logIn(user, { session: true }, (err) => {
+        if (err) return next(err);
+        res.redirect(302, "/profile");
+      });
+    }
+  )(req, res, next);
 });
+
+app.get("/logout", (req, res, next) => {
+  req.logOut({ keepSessionInfo: false }, (err) => {
+    if (err) return next(err);
+  });
+  res.redirect("/");
+});
+
+// app.use((err, req, res, next) => {
+//   const statusCode = err.statusCode || 500;
+//   const message = err.message || "Internal server error!";
+//   return res.status(statusCode).json({ success: false, message });
+// });
 
 module.exports = app;

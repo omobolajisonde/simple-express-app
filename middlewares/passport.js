@@ -1,5 +1,6 @@
 const passport = require("passport");
 const LocalStrategy = require("passport-local").Strategy;
+const FacebookStrategy = require("passport-facebook").Strategy;
 
 const User = require("../models/userModel");
 
@@ -8,7 +9,7 @@ passport.serializeUser(function (user, done) {
   process.nextTick(function () {
     return done(null, {
       id: user.id,
-      username: user.username,
+      username: user.username || user.name,
     });
   });
 });
@@ -33,13 +34,31 @@ passport.use(
       try {
         const user = await User.findOne({ username });
         if (!user || !(await user.isCorrectPassword(password))) {
-          done(null, null, { message: "Username or password not correct " });
+          return done(null, null, {
+            message: "Username or password not correct.",
+          });
         }
         return done(null, user); // Serializes user into session and sets req.user = user
       } catch (error) {
         console.log("Here");
         return done(error);
       }
+    }
+  )
+);
+
+// configuring passport's fb strategy
+passport.use(
+  "facebook",
+  new FacebookStrategy(
+    {
+      clientID: process.env.FB_APP_CLIENT_ID,
+      clientSecret: process.env.FB_APP_CLIENT_SECRET,
+      callbackURL: process.env.CALLBACK_URL,
+    },
+    (accessToken, refreshToken, profile, done) => {
+      // console.log(profile);
+      done(null, profile._json);
     }
   )
 );
